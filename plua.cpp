@@ -36,16 +36,17 @@ extern "C" {
 }
 
 int open_debug = 0;
-int gsamplecount;
-std::string gfilename;
+int g_samplecount;
+std::string g_filename;
 lua_State *gL;
 int grunning = 0;
 
 #define LLOG(...) if (open_debug) {llog("[DEBUG] ", __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);}
 #define LERR(...) if (open_debug) {llog("[ERROR] ", __FILE__, __FUNCTION__, __LINE__, __VA_ARGS__);}
 
-void llog(const char *header, const char *file, const char *func, int pos, const char *fmt, ...) {
-    FILE *pLog = NULL;
+void llog(const char* header, const char* file, const char* func, int pos, const char* fmt, ...) 
+{
+    FILE* pLog = NULL;
     time_t clock1;
     struct tm *tptr;
     va_list ap;
@@ -87,16 +88,22 @@ static const int MAX_FUNC_NAME_SIZE = 127;
 ** search for 'objidx' in table at index -1.
 ** return 1 + string at top if find a good name.
 */
-static int findfield(lua_State *L, int objidx, int level) {
+static int findfield(lua_State *L, int objidx, int level) // obj_idx 正数， level 遍历层级， if find object push object name onto stack
+{
     if (level == 0 || !lua_istable(L, -1))
         return 0;  /* not found */
     lua_pushnil(L);  /* start 'next' loop */
-    while (lua_next(L, -2)) {  /* for each pair in table */
-        if (lua_type(L, -2) == LUA_TSTRING) {  /* ignore non-string keys */
-            if (lua_rawequal(L, objidx, -1)) {  /* found object? */
+    while (lua_next(L, -2)) /* for each pair in table */
+	{  
+        if (lua_type(L, -2) == LUA_TSTRING) /* ignore non-string keys */
+		{  
+            if (lua_rawequal(L, objidx, -1)) /* found object? */
+			{  
                 lua_pop(L, 1);  /* remove value (but keep name) */
                 return 1;
-            } else if (findfield(L, objidx, level - 1)) {  /* try recursively */
+            } 
+			else if (findfield(L, objidx, level - 1)) /* try recursively */
+			{  
                 lua_remove(L, -2);  /* remove table (but keep name) */
                 lua_pushliteral(L, ".");
                 lua_insert(L, -2);  /* place '.' between the two names */
@@ -112,13 +119,16 @@ static int findfield(lua_State *L, int objidx, int level) {
 /*
 ** Search for a name for a function in all loaded modules
 */
-static int pushglobalfuncname(lua_State *L, lua_Debug *ar) {
+static int pushglobalfuncname(lua_State *L, lua_Debug *ar) 
+{
     int top = lua_gettop(L);
     lua_getinfo(L, "f", ar);  /* push function */
     lua_getfield(L, LUA_REGISTRYINDEX, "_LOADED");
-    if (findfield(L, top + 1, 6)) {
+    if (findfield(L, top + 1, 6)) 
+	{
         const char *name = lua_tostring(L, -1);
-        if (strncmp(name, "_G.", 3) == 0) {  /* name start with '_G.'? */
+        if (strncmp(name, "_G.", 3) == 0)  /* name start with '_G.'? */
+		{ 
             lua_pushstring(L, name + 3);  /* push name without prefix */
             lua_remove(L, -2);  /* remove original name */
         }
@@ -137,12 +147,15 @@ static int pushglobalfuncname(lua_State *L, lua_Debug *ar) {
 }
 
 
-static void pushfuncname(lua_State *L, lua_Debug *ar) {
+static void pushfuncname(lua_State* L, lua_Debug* ar) 
+{
 	if (*ar->namewhat != '\0')  /* is there a name from code? */
         lua_pushfstring(L, "%s '%s'", ar->namewhat, ar->name);  /* use it */
-	else if (pushglobalfuncname(L, ar)) {  /* try first a global name */
+	else if (pushglobalfuncname(L, ar)) /* try first a global name */
+	{  
 		lua_pushfstring(L, "function '%s'", lua_tostring(L, -1));
 		lua_remove(L, -2);  /* remove name */
+		printf("######### global func name\n");
 	}
     else if (*ar->what == 'm')  /* main? */
         lua_pushliteral(L, "main chunk");
@@ -153,16 +166,19 @@ static void pushfuncname(lua_State *L, lua_Debug *ar) {
 }
 
 
-static int lastlevel(lua_State *L) {
+static int lastlevel(lua_State* L) // 或取最顶层堆栈 index
+{
     lua_Debug ar;
     int li = 1, le = 1;
     /* find an upper bound */
-    while (lua_getstack(L, le, &ar)) {
+    while (lua_getstack(L, le, &ar))
+	{
         li = le;
         le *= 2;
     }
     /* do a binary search */
-    while (li < le) {
+    while (li < le)
+	{
         int m = (li + le) / 2;
         if (lua_getstack(L, m, &ar)) li = m + 1;
         else le = m;
@@ -173,8 +189,8 @@ static int lastlevel(lua_State *L) {
 
 /////////////////////////////copy from lua end///////////////////////////////////////////////
 
-std::unordered_map<std::string, int> gString2Id;
-std::unordered_map<int, std::string> gId2String;
+std::unordered_map<std::string, int> g_String2Id;
+std::unordered_map<int, std::string> g_Id2String;
 
 static const int VALID_MIN_ID = 3;
 
@@ -183,65 +199,76 @@ static const int MAX_CALL_STACK_SIZE = 4;
 static const int MAX_BUCKET_SIZE = 1 << 10;
 static const int MAX_CALL_STACK_SAVE_SIZE = 1 << 18;
 
-struct CallStack {
+struct CallStack 
+{
     int count;
     int depth;
     int stack[MAX_STACK_SIZE];
 };
 
-struct Bucket {
+struct Bucket 
+{
     CallStack cs[MAX_CALL_STACK_SIZE];
 };
 
-struct ProfileData {
+struct ProfileData 
+{
     Bucket bucket[MAX_BUCKET_SIZE];
     int total;
 };
 
 int gfd;
 
-ProfileData gProfileData;
+ProfileData g_ProfileData;
 CallStack gCallStackSaved[MAX_CALL_STACK_SAVE_SIZE];
-int gCallStackSavedSize = 0;
+int g_CallStackSavedSize = 0;
 
 
-static void flush_file(int fd, const char *buf, size_t len) {
-    while (len > 0) {
+static void flush_file(int fd, const char *buf, size_t len) 
+{
+    while (len > 0)
+	{
         ssize_t r = write(fd, buf, len);
         buf += r;
         len -= r;
     }
 }
 
-static void flush_callstack() {
+static void flush_callstack() 
+{
     LLOG("flush_callstack");
-    flush_file(gfd, (const char *) gCallStackSaved, sizeof(CallStack) * gCallStackSavedSize);
-    gCallStackSavedSize = 0;
+    flush_file(gfd, (const char*)gCallStackSaved, sizeof(CallStack) * g_CallStackSavedSize);
+    g_CallStackSavedSize = 0;
 }
 
-static void save_callstack(CallStack *pcs) {
-
+static void save_callstack(CallStack *pcs)
+{
     LLOG("save_callstack");
-
-    if (gCallStackSavedSize >= MAX_CALL_STACK_SAVE_SIZE) {
+    if (g_CallStackSavedSize >= MAX_CALL_STACK_SAVE_SIZE)
+	{
         flush_callstack();
     }
-    gCallStackSaved[gCallStackSavedSize] = *pcs;
-    gCallStackSavedSize++;
+    gCallStackSaved[g_CallStackSavedSize] = *pcs;
+    g_CallStackSavedSize++;
 }
 
-static void flush() {
-    if (gProfileData.total <= 0) {
+static void flush() 
+{
+    if (g_ProfileData.total <= 0) 
+	{
         return;
     }
 
     LLOG("flush...");
 
     int total = 0;
-    for (int b = 0; b < MAX_BUCKET_SIZE; b++) {
-        Bucket *bucket = &gProfileData.bucket[b];
-        for (int a = 0; a < MAX_CALL_STACK_SIZE; a++) {
-            if (bucket->cs[a].count > 0) {
+    for (int b = 0; b < MAX_BUCKET_SIZE; b++) 
+	{
+        Bucket *bucket = &g_ProfileData.bucket[b];
+        for (int a = 0; a < MAX_CALL_STACK_SIZE; a++)
+		{
+            if (bucket->cs[a].count > 0) 
+			{
                 save_callstack(&bucket->cs[a]);
                 bucket->cs[a].depth = 0;
                 bucket->cs[a].count = 0;
@@ -252,7 +279,8 @@ static void flush() {
 
     flush_callstack();
 
-    for (auto iter = gString2Id.begin(); iter != gString2Id.end(); iter++) {
+    for (auto iter = g_String2Id.begin(); iter != g_String2Id.end(); iter++)
+	{
         const std::string &str = iter->first;
         int id = iter->second;
 
@@ -264,14 +292,15 @@ static void flush() {
         flush_file(gfd, (const char *) &id, sizeof(id));
     }
 
-    int len = gString2Id.size();
+    int len = g_String2Id.size();
     flush_file(gfd, (const char *) &len, sizeof(len));
 
-    LLOG("flush ok %d %d", total, gProfileData.total);
+    LLOG("flush ok %d %d", total, g_ProfileData.total);
 
-    gProfileData.total = 0;
+    g_ProfileData.total = 0;
 
-    if (gfd != 0) {
+    if (gfd != 0)
+	{
         close(gfd);
         gfd = 0;
     }
@@ -279,7 +308,8 @@ static void flush() {
     printf("pLua flush ok\n");
 }
 
-static int lrealstop() {
+static int lrealstop() 
+{
 
     grunning = 0;
 
@@ -297,43 +327,50 @@ static int lrealstop() {
     return 0;
 }
 
-static void SignalHandlerHook(lua_State *L, lua_Debug *par) {
+static void SignalHandlerHook(lua_State* L, lua_Debug* par) 
+{
 
     LLOG("Hook...");
 
     lua_sethook(gL, 0, 0, 0);
 
-    if (gsamplecount != 0 && gsamplecount <= gProfileData.total) {
+    if (g_samplecount != 0 && g_samplecount <= g_ProfileData.total)
+	{
         LLOG("lrealstop...");
         lrealstop();
         return;
     }
-    gProfileData.total++;
+
+    g_ProfileData.total++;
 
     lua_Debug ar;
 
-    int last = lastlevel(L);
+    int last = lastlevel(L); // 栈的起始index
     int i = 0;
 
     CallStack cs;
     cs.depth = 0;
 
-    while (lua_getstack(L, last, &ar) && i < MAX_STACK_SIZE) {
+    while (lua_getstack(L, last, &ar) && i < MAX_STACK_SIZE) // 从根到当前调用堆栈
+	{
         lua_getinfo(L, "Slnt", &ar);
         pushfuncname(L, &ar);
-        const char *funcname = lua_tostring(L, -1);
+        const char* funcname = lua_tostring(L, -1);
         lua_pop(L, 1);
 
         i++;
-        last--;
+        last--; // 从栈底向上遍历
 
         int id = 0;
-        auto iter = gString2Id.find(funcname);
-        if (iter == gString2Id.end()) {
-            id = gString2Id.size();
-            gString2Id[funcname] = id;
-            gId2String[id] = funcname;
-        } else {
+        auto iter = g_String2Id.find(funcname);
+        if (iter == g_String2Id.end()) 
+		{
+            id = g_String2Id.size();
+            g_String2Id[funcname] = id;
+            g_Id2String[id] = funcname;
+        }
+		else 
+		{
             id = iter->second;
         }
 		
@@ -349,7 +386,8 @@ static void SignalHandlerHook(lua_State *L, lua_Debug *par) {
     }
 
     int hash = 0;
-    for (int i = 0; i < cs.depth; i++) {
+    for (int i = 0; i < cs.depth; i++)
+	{
         int id = cs.stack[i];
         hash = (hash << 8) | (hash >> (8 * (sizeof(hash) - 1)));
         hash += (id * 31) + (id * 7) + (id * 3);
@@ -358,10 +396,12 @@ static void SignalHandlerHook(lua_State *L, lua_Debug *par) {
     LLOG("hash %d", hash);
 
     bool done = false;
-    Bucket *bucket = &gProfileData.bucket[(uint32_t) hash % MAX_BUCKET_SIZE];
-    for (int a = 0; a < MAX_CALL_STACK_SIZE; a++) {
-        CallStack *pcs = &bucket->cs[a];
-        if (pcs->depth == 0 && pcs->count == 0) {
+    Bucket* bucket = &g_ProfileData.bucket[(uint32_t) hash % MAX_BUCKET_SIZE];
+    for (int a = 0; a < MAX_CALL_STACK_SIZE; a++)
+	{
+        CallStack* pcs = &bucket->cs[a];
+        if (pcs->depth == 0 && pcs->count == 0) // 如果当前 bucket 未被使用
+		{
             pcs->depth = cs.depth;
             pcs->count = 1;
             memcpy(pcs->stack, cs.stack, sizeof(int) * cs.depth);
@@ -369,11 +409,16 @@ static void SignalHandlerHook(lua_State *L, lua_Debug *par) {
 
             LLOG("hash %d add first %d %d", hash, pcs->count, pcs->depth);
             break;
-        } else if (pcs->depth == cs.depth) {
-            if (memcmp(pcs->stack, cs.stack, sizeof(int) * cs.depth) != 0) {
+        } 
+		else if (pcs->depth == cs.depth) 
+		{
+            if (memcmp(pcs->stack, cs.stack, sizeof(int) * cs.depth) != 0) // 逐字节比较 == 0， 表示 str1 == str2
+			{
                 break;
-            } else {
-                pcs->count++;
+            }
+			else // hash 相同 && 调用深度相同 && stacks ids 相同 -> 确定是同一栈帧调用
+			{
+                pcs->count++; // 本stack层级调用的次数
                 done = true;
 
                 LLOG("hash %d add %d %d", hash, pcs->count, pcs->depth);
@@ -382,15 +427,19 @@ static void SignalHandlerHook(lua_State *L, lua_Debug *par) {
         }
     }
 
-    if (!done) {
-        CallStack *pcs = &bucket->cs[0];
-        for (int a = 1; a < MAX_CALL_STACK_SIZE; a++) {
-            if (bucket->cs[a].count < pcs->count) {
+    if (!done) 
+	{
+        CallStack* pcs = &bucket->cs[0];
+        for (int a = 1; a < MAX_CALL_STACK_SIZE; a++)
+		{
+            if (bucket->cs[a].count < pcs->count)
+			{
                 pcs = &bucket->cs[a];
             }
         }
 
-        if (pcs->count > 0) {
+        if (pcs->count > 0) // if bucket is full ?
+		{
             save_callstack(pcs);
         }
 
@@ -404,14 +453,15 @@ static void SignalHandlerHook(lua_State *L, lua_Debug *par) {
 
 }
 
-static void SignalHandler(int sig, siginfo_t *sinfo, void *ucontext) {
+static void SignalHandler(int sig, siginfo_t* sinfo, void* ucontext)
+{
 	// hack lua5.3.4 linux-x64 为了判断是否不在lua中 L-nCcalls == 0
-	//unsigned short nCcalls = *(unsigned short *)((char*)gL+198);
+	//unsigned short nCcalls = *(unsigned short *)((char*)gL+198); // lua_State->nCcalls : number of nested C calls
 	//if (nCcalls == 0)
 	//{
 	//	return;
 	//}
-	void* cframe = (void*)((char*)gL+48);
+	void* cframe = (void*)((char*)gL+48); // lua_State -> cframe
 	if (cframe == NULL)
 	{
 		return;
@@ -419,55 +469,59 @@ static void SignalHandler(int sig, siginfo_t *sinfo, void *ucontext) {
     lua_sethook(gL, SignalHandlerHook, LUA_MASKCOUNT, 1);
 }
 
-static int lrealstart(lua_State *L, int second, const char *file) {
-
-    if (grunning) {
+static int lrealstart(lua_State* L, int second, const char* file)
+{
+    if (grunning) 
+	{
         LERR("start again, failed");
         return -1;
     }
     grunning = 1;
 	
-	gString2Id["?"] = 0;
-	gId2String[0] = "?";
-	gString2Id["function 'xpcall'"] = 1;
-	gId2String[1] = "function 'xpcall'";
-	gString2Id["function 'pcall'"] = 2;
-	gId2String[2] = "function 'pcall'";
+	g_String2Id["?"] = 0;
+	g_Id2String[0] = "?";
+	g_String2Id["function 'xpcall'"] = 1;
+	g_Id2String[1] = "function 'xpcall'";
+	g_String2Id["function 'pcall'"] = 2;
+	g_Id2String[2] = "function 'pcall'";
 
     const int iter = 100;
 
-    gsamplecount = second * 1000 / iter;
-    gfilename = file;
+    g_samplecount = second * 1000 / iter;
+    g_filename = file;
     gL = L;
 
-    LLOG("lstart %u %s", gsamplecount, file);
+    LLOG("lstart %u %s", g_samplecount, file);
 
     struct sigaction sa;
     sa.sa_sigaction = SignalHandler;
-    sa.sa_flags = SA_RESTART | SA_SIGINFO;
+    sa.sa_flags = SA_RESTART | SA_SIGINFO; // SA_RESTART 用于重新启动被信号中断的系统调用
     sigemptyset(&sa.sa_mask);
 
-    if (sigaction(SIGALRM, &sa, NULL) == -1) {
+    if (sigaction(SIGALRM, &sa, NULL) == -1) 
+	{
         LERR("sigaction(SIGALRM) failed");
         return -1;
     }
 
     struct itimerval timer;
     timer.it_interval.tv_sec = 0;
-    timer.it_interval.tv_usec = 1 * 1000;
+    timer.it_interval.tv_usec = 1 * 1000; // 100 ms 触发一次
     timer.it_value = timer.it_interval;
     int ret = setitimer(ITIMER_REAL, &timer, NULL);
-    if (ret != 0) {
+    if (ret != 0) 
+	{
         LERR("setitimer fail %d", ret);
         return -1;
     }
 
-    memset(&gProfileData, 0, sizeof(gProfileData));
+    memset(&g_ProfileData, 0, sizeof(g_ProfileData));
     memset(&gCallStackSaved, 0, sizeof(gCallStackSaved));
-    memset(&gCallStackSavedSize, 0, sizeof(gCallStackSavedSize));
+    memset(&g_CallStackSavedSize, 0, sizeof(g_CallStackSavedSize));
 
     int fd = open(file, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-    if (fd < 0) {
+    if (fd < 0) 
+	{
         LERR("open file fail %s", file);
         return -1;
     }
@@ -477,7 +531,8 @@ static int lrealstart(lua_State *L, int second, const char *file) {
     return 0;
 }
 
-static int lstart(lua_State *L) {
+static int lstart(lua_State* L) 
+{
     int second = (int) lua_tointeger(L, 1);
     const char *file = lua_tostring(L, 2);
 
@@ -486,29 +541,33 @@ static int lstart(lua_State *L) {
     return 1;
 }
 
-static int lstop(lua_State *L) {
-
-    LLOG("lstop %s", gfilename.c_str());
+static int lstop(lua_State* L)
+{
+    LLOG("lstop %s", g_filename.c_str());
     int ret = lrealstop();
 
     lua_pushinteger(L, ret);
     return 1;
 }
 
-static void load_file(int fd, char *buf, size_t len) {
-    while (len > 0) {
+static void load_file(int fd, char* buf, size_t len)
+{
+    while (len > 0)
+	{
         ssize_t r = read(fd, buf, len);
         buf += r;
         len -= r;
     }
 }
 
-std::vector <CallStack> gLoadCallStack;
+std::vector <CallStack> g_LoadCallStack;
 
-static int load(const char *srcfile) {
-    int fd = open(srcfile, O_RDONLY, 0666);
-    if (fd < 0) {
-        LERR("open srcfile fail %s", srcfile);
+static int load(const char* src_file)
+{
+    int fd = open(src_file, O_RDONLY, 0666);
+    if (fd < 0)
+	{
+        LERR("open src_file fail %s", src_file);
         return -1;
     }
 
@@ -516,95 +575,103 @@ static int load(const char *srcfile) {
 
     int i = 0;
 
-    int namemaplen = 0;
-    i += sizeof(namemaplen);
+    int name_map_len = 0;
+    i += sizeof(name_map_len);
     lseek(fd, -i, SEEK_END);
-    load_file(fd, (char *) &namemaplen, sizeof(namemaplen));
+    load_file(fd, (char *) &name_map_len, sizeof(name_map_len));
 
-    LLOG("namemaplen %d", namemaplen);
+    LLOG("name_map_len %d", name_map_len);
 
-    int namenum = 0;
-    while (i < cnt && namenum < namemaplen) {
+    int name_num = 0;
+    while (i < cnt && name_num < name_map_len) 
+	{
         int id = 0;
         i += sizeof(id);
         lseek(fd, -i, SEEK_END);
-        load_file(fd, (char *) &id, sizeof(id));
+        load_file(fd, (char*)&id, sizeof(id)); // 读取符号id
 
-        int namelen = 0;
-        i += sizeof(namelen);
+        int name_len = 0;
+        i += sizeof(name_len);
         lseek(fd, -i, SEEK_END);
-        load_file(fd, (char *) &namelen, sizeof(namelen));
+        load_file(fd, (char *) &name_len, sizeof(name_len)); // 读取符号长度
 
-        if (namelen > MAX_FUNC_NAME_SIZE) {
-            LERR("open namelen fail %s %d", srcfile, namelen);
+        if (name_len > MAX_FUNC_NAME_SIZE)
+		{
+            LERR("open name_len fail %s %d", src_file, name_len);
             close(fd);
             return -1;
         }
 
         char str[MAX_FUNC_NAME_SIZE + 1];
-        str[namelen] = 0;
+        str[name_len] = 0;
 
-        i += namelen;
+        i += name_len;
         lseek(fd, -i, SEEK_END);
-        load_file(fd, str, namelen);
+        load_file(fd, str, name_len); // 读取符号
 
-        gString2Id[str] = id;
-        gId2String[id] = str;
+        g_String2Id[str] = id;
+        g_Id2String[id] = str;
 
         LLOG("name %d %s", id, str);
-        namenum++;
+        name_num++;
     }
 
-    gLoadCallStack.clear();
-    while (i < cnt) {
+    g_LoadCallStack.clear();
+
+    while (i < cnt) 
+	{
         CallStack cs;
 
         i += sizeof(cs);
         lseek(fd, -i, SEEK_END);
-        load_file(fd, (char *) &cs, sizeof(cs));
+        load_file(fd, (char*) &cs, sizeof(cs)); // 读取 call stack frame
 
-        gLoadCallStack.push_back(cs);
+        g_LoadCallStack.push_back(cs);
 
-        LLOG("CallStack %d %d %s", cs.depth, cs.count, gId2String[cs.stack[cs.depth - 1]].c_str());
+        LLOG("CallStack %d %d %s", cs.depth, cs.count, g_Id2String[cs.stack[cs.depth - 1]].c_str());
     }
 
-    LLOG("load ok %d %d", gString2Id.size(), gLoadCallStack.size());
+    LLOG("load ok %d %d", g_String2Id.size(), g_LoadCallStack.size());
 
     close(fd);
     return 0;
 }
 
-static int output_text(const char *dstfile) {
-
-    int fd = open(dstfile, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-    if (fd < 0) {
-        LERR("open dstfile fail %s", dstfile);
+static int output_text(const char* dst_file) 
+{
+    int fd = open(dst_file, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+    if (fd < 0) 
+	{
+        LERR("open dst_file fail %s", dst_file);
         return -1;
     }
 
     int total = 0;
 
-    std::unordered_map<int, int> funcmap;
-    for (auto iter = gLoadCallStack.begin(); iter != gLoadCallStack.end(); iter++) {
+    std::unordered_map<int, int> func_map;
+    for (auto iter = g_LoadCallStack.begin(); iter != g_LoadCallStack.end(); iter++) 
+	{
         const CallStack &cs = *iter;
-
-        funcmap[cs.stack[cs.depth - 1]] += cs.count;
+        func_map[cs.stack[cs.depth - 1]] += cs.count;
         total += cs.count;
     }
 
-    std::vector <std::pair<int, int>> funcarr;
-    for (auto iter = funcmap.begin(); iter != funcmap.end(); iter++) {
-        funcarr.push_back(std::make_pair(iter->first, iter->second));
+    std::vector <std::pair<int, int>> func_arr;
+    for (auto iter = func_map.begin(); iter != func_map.end(); iter++) 
+	{
+        func_arr.push_back(std::make_pair(iter->first, iter->second));
     }
 
-    std::sort(funcarr.begin(), funcarr.end(), [](const std::pair<int, int> &l, const std::pair<int, int> &r) {
-                  return r.second < l.second;
-              }
+    std::sort(func_arr.begin(), func_arr.end(), 
+		[](const std::pair<int, int> &l, const std::pair<int, int> &r) {
+			return r.second < l.second;
+		}
     );
 
     std::stringstream ss;
-    for (auto iter = funcarr.begin(); iter != funcarr.end(); iter++) {
-        ss << iter->second * 100 / total << "%\t" << gId2String[iter->first] << "\n";
+    for (auto iter = func_arr.begin(); iter != func_arr.end(); iter++) 
+	{
+        ss << iter->second * 100 / total << "%\t" << g_Id2String[iter->first] << "\n";
     }
 
     LLOG("%s", ss.str().c_str())
@@ -616,21 +683,23 @@ static int output_text(const char *dstfile) {
     return 0;
 }
 
-static int ltext(lua_State *L) {
+static int ltext(lua_State* L)
+{
+    const char* src_file = lua_tostring(L, 1);
+    const char* dst_file = lua_tostring(L, 2);
 
-    const char *srcfile = lua_tostring(L, 1);
-    const char *dstfile = lua_tostring(L, 2);
-
-    int ret = load(srcfile);
-    if (ret != 0) {
-        LERR("load fail %d %s %s", ret, srcfile, dstfile);
+    int ret = load(src_file);
+    if (ret != 0) 
+	{
+        LERR("load fail %d %s %s", ret, src_file, dst_file);
         lua_pushinteger(L, ret);
         return 1;
     }
 
-    ret = output_text(dstfile);
-    if (ret != 0) {
-        LERR("output_text fail %d %s %s", ret, srcfile, dstfile);
+    ret = output_text(dst_file);
+    if (ret != 0) 
+	{
+        LERR("output_text fail %d %s %s", ret, src_file, dst_file);
         lua_pushinteger(L, ret);
         return 1;
     }
@@ -639,75 +708,85 @@ static int ltext(lua_State *L) {
     return 1;
 }
 
-static int output_dot(const char *dstfile) {
-
-    int fd = open(dstfile, O_CREAT | O_WRONLY | O_TRUNC, 0666);
-    if (fd < 0) {
-        LERR("open dstfile fail %s", dstfile);
+static int output_dot(const char* dst_file)
+{
+    int fd = open(dst_file, O_CREAT | O_WRONLY | O_TRUNC, 0666); // 新文件 && 置空
+    if (fd < 0)
+	{
+        LERR("open dst_file fail %s", dst_file);
         return -1;
     }
 
-    int totalself = 0;
-    std::unordered_map<int, int> funcmapself;
-    for (auto iter = gLoadCallStack.begin(); iter != gLoadCallStack.end(); iter++) {
+    int total_self = 0;
+    std::unordered_map<int, int> func_map_self; // cur_call symbol_id <--> count 
+    for (auto iter = g_LoadCallStack.begin(); iter != g_LoadCallStack.end(); iter++)
+	{
         const CallStack &cs = *iter;
-
-        funcmapself[cs.stack[cs.depth - 1]] += cs.count;
-        totalself += cs.count;
+        func_map_self[cs.stack[cs.depth - 1]] += cs.count;
+        total_self += cs.count;
     }
 
-    int total = 0;
-    std::unordered_map<int, int> funcmap;
-    for (auto iter = gLoadCallStack.begin(); iter != gLoadCallStack.end(); iter++) {
+    int total = 0; // 总栈帧数
+    std::unordered_map<int, int> func_map; // every stack frame id <--> count
+    for (auto iter = g_LoadCallStack.begin(); iter != g_LoadCallStack.end(); iter++) 
+	{
         const CallStack &cs = *iter;
-
-        for (int i = 0; i < cs.depth; i++) {
-            funcmap[cs.stack[i]] += cs.count;
+        for (int i = 0; i < cs.depth; i++)
+		{
+            func_map[cs.stack[i]] += cs.count;
         }
         total += cs.count;
     }
 
-    std::vector <std::pair<int, int>> funcarr;
-    for (auto iter = funcmap.begin(); iter != funcmap.end(); iter++) {
-        funcarr.push_back(std::make_pair(iter->first, iter->second));
+    std::vector <std::pair<int, int>> func_arr; // stack frame count sort (stack frame id <--> count)
+    for (auto iter = func_map.begin(); iter != func_map.end(); iter++) 
+	{
+        func_arr.push_back(std::make_pair(iter->first, iter->second));
     }
 
-    std::sort(funcarr.begin(), funcarr.end(), [](const std::pair<int, int> &l, const std::pair<int, int> &r) {
-                  return r.second < l.second;
-              }
+    std::sort(func_arr.begin(), func_arr.end(), 
+		[](const std::pair<int, int> &l, const std::pair<int, int> &r) {
+			return r.second < l.second;
+        }
     );
 
-    struct pair_hash {
-        std::size_t operator()(const std::pair<int, int> &p) const {
+    struct pair_hash 
+	{
+        std::size_t operator()(const std::pair<int, int>& p) const
+		{
             return ((size_t) p.first << 32) + p.second;
         }
     };
 
-    std::set<int> hassonset;
-    std::unordered_set <std::pair<int, int>, pair_hash> funccallset;
-    for (auto iter = gLoadCallStack.begin(); iter != gLoadCallStack.end(); iter++) {
+    std::set<int> has_son_set;
+    std::unordered_set <std::pair<int, int>, pair_hash> func_call_set;
+    for (auto iter = g_LoadCallStack.begin(); iter != g_LoadCallStack.end(); iter++) 
+	{
         const CallStack &cs = *iter;
-
-        for (int i = 0; i < cs.depth - 1; i++) {
-            funccallset.insert(std::make_pair(cs.stack[i], cs.stack[i + 1]));
-            hassonset.insert(cs.stack[i]);
+        for (int i = 0; i < cs.depth - 1; i++) 
+		{
+            func_call_set.insert(std::make_pair(cs.stack[i], cs.stack[i + 1]));
+            has_son_set.insert(cs.stack[i]);
         }
     }
 
     std::stringstream ss;
     ss << "digraph G {\n";
 
-    for (auto iter = funcarr.begin(); iter != funcarr.end(); iter++) {
-        ss << "\tnode" << iter->first
-           << " [label=\"" << gId2String[iter->first] << "\\r"
-           << funcmapself[iter->first] << " (" << funcmapself[iter->first] * 100 / totalself << "%)" << "\\r";
+    for (auto iter = func_arr.begin(); iter != func_arr.end(); iter++)
+	{
+        ss << "\tnode" << iter->first // symbol id
+           << " [label=\"" << g_Id2String[iter->first] << "\\r" // symbol name
+           << func_map_self[iter->first] << " (" << func_map_self[iter->first] * 100 / total_self << "%)" << "\\r"; // 
 
-        if (hassonset.find(iter->first) != hassonset.end()) {
+        if (has_son_set.find(iter->first) != has_son_set.end())
+		{
             ss << iter->second << " (" << iter->second * 100 / total << "%)" << "\\r";
         }
 
-        int fontsize = funcmapself[iter->first] * 100 / totalself;
-        if (fontsize < 10) {
+        int fontsize = func_map_self[iter->first] * 100 / total_self; // 占比被收集到的帧越大字体越大
+        if (fontsize < 10)
+		{
             fontsize = 10;
         }
 
@@ -717,15 +796,17 @@ static int output_dot(const char *dstfile) {
            << "];\n";
     }
 
-    for (auto iter = funccallset.begin(); iter != funccallset.end(); iter++) {
-        const std::pair<int, int> &cp = *iter;
-        float linewidth = funcmap[cp.second] * 3.f / total;
-        if (linewidth < 0.5f) {
+    for (auto iter = func_call_set.begin(); iter != func_call_set.end(); iter++)
+	{
+        const std::pair<int, int>& cp = *iter;
+        float linewidth = func_map[cp.second] * 3.f / total;
+        if (linewidth < 0.5f) 
+		{
             linewidth = 0.5f;
         }
         ss << "\tnode" << cp.first << "->" << "node" << cp.second
            << " [style=\"setlinewidth(" << linewidth << ")\""
-           << " label=" << funcmap[cp.second]
+           << " label=" << func_map[cp.second]
            << "];\n";
     }
 
@@ -740,21 +821,23 @@ static int output_dot(const char *dstfile) {
     return 0;
 }
 
-static int ldot(lua_State *L) {
+static int ldot(lua_State* L) 
+{
+    const char* src_file = lua_tostring(L, 1);
+    const char* dst_file = lua_tostring(L, 2);
 
-    const char *srcfile = lua_tostring(L, 1);
-    const char *dstfile = lua_tostring(L, 2);
-
-    int ret = load(srcfile);
-    if (ret != 0) {
-        LERR("load fail %d %s %s", ret, srcfile, dstfile);
+    int ret = load(src_file);
+    if (ret != 0)
+	{
+        LERR("load fail %d %s %s", ret, src_file, dst_file);
         lua_pushinteger(L, ret);
         return 1;
     }
 
-    ret = output_dot(dstfile);
-    if (ret != 0) {
-        LERR("output_dot fail %d %s %s", ret, srcfile, dstfile);
+    ret = output_dot(dst_file);
+    if (ret != 0)
+	{
+        LERR("output_dot fail %d %s %s", ret, src_file, dst_file);
         lua_pushinteger(L, ret);
         return 1;
     }
@@ -763,35 +846,37 @@ static int ldot(lua_State *L) {
     return 1;
 }
 
-static int lsvg(lua_State *L) {
+static int lsvg(lua_State *L)
+{
+    const char *src_file = lua_tostring(L, 1);
+    const char *dst_file = lua_tostring(L, 2);
 
-    const char *srcfile = lua_tostring(L, 1);
-    const char *dstfile = lua_tostring(L, 2);
-
-    int ret = load(srcfile);
-    if (ret != 0) {
-        LERR("load fail %d %s %s", ret, srcfile, dstfile);
+    int ret = load(src_file);
+    if (ret != 0) 
+	{
+        LERR("load fail %d %s %s", ret, src_file, dst_file);
         lua_pushinteger(L, ret);
         return 1;
     }
 
-    std::string tmpdot = dstfile;
+    std::string tmpdot = dst_file;
     tmpdot += ".dot";
     ret = output_dot(tmpdot.c_str());
-    if (ret != 0) {
-        LERR("output_dot fail %d %s %s", ret, srcfile, tmpdot.c_str());
+    if (ret != 0) 
+	{
+        LERR("output_dot fail %d %s %s", ret, src_file, tmpdot.c_str());
         lua_pushinteger(L, ret);
         return 1;
     }
 
-    GVC_t *gvc;
-    Agraph_t *g;
-    FILE *fp;
+    GVC_t* gvc;
+    Agraph_t* g;
+    FILE* fp;
     gvc = gvContext();
     fp = fopen(tmpdot.c_str(), "r");
     g = agread(fp, 0);
     gvLayout(gvc, g, "dot");
-    gvRender(gvc, g, "svg", fopen(dstfile, "w"));
+    gvRender(gvc, g, "svg", fopen(dst_file, "w"));
     gvFreeLayout(gvc, g);
     agclose(g);
     gvFreeContext(gvc);
@@ -801,8 +886,11 @@ static int lsvg(lua_State *L) {
 
 }
 
-extern "C" int luaopen_libplua(lua_State *L) {
-    // luaL_checkversion(L);
+extern "C" int luaopen_libplua(lua_State *L) 
+{
+#if LUA_VERSION_NUM > 502
+	luaL_checkversion(L);
+#else
     luaL_Reg l[] = {
             {"start", lstart},
             {"stop",  lstop},
