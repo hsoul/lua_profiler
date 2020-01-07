@@ -577,7 +577,7 @@ static int load(const char* src_file)
 		if (iter != g_id_stack_frames.end())
 		{
 			StackFrame& stack_frame = iter->second;
-			LLOG("CallStacks %d %d %s %s:%s", cs.depth_, cs.count_, stack_frame.func_name_, stack_frame.source_, stack_frame.line_defined_);
+			LLOG("CallStacks %d %d %s %s:%s", cs.depth_, cs.count_, stack_frame.func_name_.c_str(), stack_frame.source_.c_str(), stack_frame.line_defined_);
 		}
 		else
 		{
